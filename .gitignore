@@ -110,3 +110,4 @@ fabric.properties
 .idea/*.xml
 .idea/*.iml
 .idea/*.gitignore
+.idea/
