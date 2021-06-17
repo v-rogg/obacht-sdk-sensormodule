@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
-project(rplidar_cpp)
+project(obacht-sensor-module)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 20)
 
 find_package (Threads REQUIRED)
 
@@ -24,3 +24,4 @@ add_executable("${PROJECT_NAME}" main.cpp
         )
 
 target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${PROJECT_NAME} paho-mqtt3as paho-mqtt3a paho-mqtt3c paho-mqttpp3)
