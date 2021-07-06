@@ -148,7 +148,7 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
     drv->disconnect();
 }
 
-void subscription(mqtt::async_client &client) {
+void pingcheck(mqtt::async_client &client) {
 
     mqtt::topic topic(client, "pingcheck", QOS);
 
@@ -213,7 +213,7 @@ int main() {
             connectionTopic.publish(s);
 
             thScan = std::thread(scan, drv, scanTopic, connectionTopic);
-            subscription(client);
+//            pingcheck(client);
 
         } else {
             fprintf(stderr, "Failed to connect to LIDAR %08x\r\n", res);
