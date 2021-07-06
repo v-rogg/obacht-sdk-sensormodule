@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <iomanip>
 
 #ifndef _countof
 #define _countof(_Array) (int)(sizeof(_Array) / sizeof(_Array[0]))
@@ -106,13 +107,14 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
 
 //                    uint64_t ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-            stream << "@scan;" << currentTime << timezoneBuffer;
+            stream << "scan;" << currentTime << timezoneBuffer;
             std::string s = stream.str();
 //                    std::cout << s << std::endl;
             topic.publish(s);
             stream.str("");
             stream.clear();
 
+            stream << "raw;";
             drv->ascendScanData(nodes, count);
             for (int pos = 0; pos < (int)count; pos++) {
 //                        printf("%s theta: %03.2f Dist: %08.2f Q: %d \n",
@@ -126,7 +128,7 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
                 float angle = (nodes[pos].angle_z_q14 * 90.f / (1 << 14));
                 float distance = nodes[pos].dist_mm_q2;
 
-                if (distance > 0) stream << std::fixed << angle << ";" << distance << "!";
+                if (distance > 0) stream << std::fixed << std::setprecision(4) << angle << ":" << std::setprecision(0) << distance << "!";
             }
             s = stream.str();
             topic.publish(s);
@@ -136,7 +138,7 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
 
         if (ctrl_c_pressed) {
             std::stringstream stream;
-            stream << "-connect:" << hostname << ":" << address;
+            stream << address << ";-;" << hostname;
             connectionTopic.publish(stream.str());
             std::cout << "Pressed C" << std::endl;
             break;
@@ -186,12 +188,12 @@ int main() {
         client.start_consuming();
         auto token = client.connect();
         mqtt::topic scanTopic(client, address, QOS);
-        mqtt::topic connectionTopic(client, "$connected", QOS);
+        mqtt::topic connectionTopic(client, "connection", QOS);
 
-        auto response = token->get_connect_response();
-        if (!response.is_session_present()) {
-            client.subscribe("pingtest", QOS)->wait();
-        }
+//        auto response = token->get_connect_response();
+//        if (!response.is_session_present()) {
+//            client.subscribe("pingtest", QOS)->wait();
+//        }
 
         u_result res;
         if (strcmp(hostname, "pi0") == 0) {
@@ -205,7 +207,7 @@ int main() {
             std::stringstream stream;
             char model[8];
             sprintf(model, "%d", deviceInfo.model);
-            stream << "+connect:" << hostname << ":" << address << ":" << model;
+            stream << address << ";+;" << hostname << ";" << model;
             std::string s = stream.str();
 
 //            scan(drv, scanTopic);
