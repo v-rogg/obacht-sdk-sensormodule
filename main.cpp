@@ -10,6 +10,15 @@
 #include <cstddef>
 //#include <ctime>
 #include <thread>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifndef _countof
 #define _countof(_Array) (int)(sizeof(_Array) / sizeof(_Array[0]))
@@ -26,10 +35,15 @@ void ctrlc(int)
 }
 
 const std::string MQTT_SERVER_ADDRESS { "tcp://192.168.178.48:1883" };
-const std::string TOPIC { "test" };
+//const std::string TOPIC { "test" };
 const int QOS = 1;
 
-void deviceInfo(RPlidarDriver *drv) {
+char hostname[HOST_NAME_MAX];
+char *address;
+struct hostent *host_entry;
+
+
+rplidar_response_device_info_t getDeviceInfo(RPlidarDriver *drv) {
     rplidar_response_device_info_t devinfo;
     std::vector<RplidarScanMode> scanmodes;
     _u16 typicalscanmode;
@@ -41,9 +55,11 @@ void deviceInfo(RPlidarDriver *drv) {
     printf("\n"
            "Firmware Ver: %d.%02d\n"
            "Hardware Rev: %d\n"
+           "Model: %d\n"
             , devinfo.firmware_version>>8
             , devinfo.firmware_version & 0xFF
-            , (int)devinfo.hardware_version);
+            , (int)devinfo.hardware_version
+            , devinfo.model);
 
     printf("-----------\n");
     printf("Scan Modes\n");
@@ -54,9 +70,10 @@ void deviceInfo(RPlidarDriver *drv) {
     }
 
     std::cout << typicalscanmode << std::endl;
+    return devinfo;
 }
 
-void scan(RPlidarDriver *drv, mqtt::topic topic) {
+void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
     u_result op_result;
 
     drv->startMotor();
@@ -118,6 +135,10 @@ void scan(RPlidarDriver *drv, mqtt::topic topic) {
         }
 
         if (ctrl_c_pressed) {
+            std::stringstream stream;
+            stream << "-connect:" << hostname << ":" << address;
+            connectionTopic.publish(stream.str());
+            std::cout << "Pressed C" << std::endl;
             break;
         }
     }
@@ -127,12 +148,27 @@ void scan(RPlidarDriver *drv, mqtt::topic topic) {
     drv->disconnect();
 }
 
+void subscription(mqtt::async_client &client) {
+
+    mqtt::topic topic(client, "pingcheck", QOS);
+
+    while (true) {
+        auto msg = client.consume_message();
+        if (!msg) break;
+        if (msg->get_topic() != "test") {
+            std::cout << msg->get_topic() << ": " << msg->to_string() << std::endl;
+            topic.publish("@scan:2006-01-02T15:04:05Z07:00");
+        }
+    }
+}
+
 int main() {
     printf("Obacht! Tracking SDK.\n"
            "LiDAR SDK Version: " RPLIDAR_SDK_VERSION "\n");
 
-    char hostname[HOST_NAME_MAX];
     gethostname(hostname, HOST_NAME_MAX);
+    host_entry = gethostbyname(hostname);
+    address = inet_ntoa(*((struct in_addr*) host_entry->h_addr_list[0]));
 
     mqtt::async_client client(MQTT_SERVER_ADDRESS, hostname);
     RPlidarDriver * drv = RPlidarDriver::CreateDriver(DRIVER_TYPE_SERIALPORT);
@@ -143,19 +179,41 @@ int main() {
 
     signal(SIGINT, ctrlc);
 
+    std::thread thScan;
+//    std::thread thSub;
+
     try {
-        client.connect()->wait();
-        mqtt::topic topic(client, TOPIC, QOS);
+        client.start_consuming();
+        auto token = client.connect();
+        mqtt::topic scanTopic(client, address, QOS);
+        mqtt::topic connectionTopic(client, "$connected", QOS);
 
-        u_result res = drv->connect("/dev/ttyUSB0", 256000);
-//        u_result res = drv->connect("/dev/ttyUSB0", 115200);
+        auto response = token->get_connect_response();
+        if (!response.is_session_present()) {
+            client.subscribe("pingtest", QOS)->wait();
+        }
 
+        u_result res;
+        if (strcmp(hostname, "pi0") == 0) {
+            res = drv->connect("/dev/ttyUSB0", 115200);
+        } else {
+            res = drv->connect("/dev/ttyUSB0", 256000);
+        }
         if(IS_OK(res)) {
+            rplidar_response_device_info_t deviceInfo = getDeviceInfo(drv);
 
-            deviceInfo(drv);
-//            scan(drv, topic);
-            std::thread thScan(scan, drv, topic);
-            thScan.join();
+            std::stringstream stream;
+            char model[8];
+            sprintf(model, "%d", deviceInfo.model);
+            stream << "+connect:" << hostname << ":" << address << ":" << model;
+            std::string s = stream.str();
+
+//            scan(drv, scanTopic);
+//            thSub = std::thread(subscription, client);
+            connectionTopic.publish(s);
+
+            thScan = std::thread(scan, drv, scanTopic, connectionTopic);
+            subscription(client);
 
         } else {
             fprintf(stderr, "Failed to connect to LIDAR %08x\r\n", res);
@@ -165,6 +223,9 @@ int main() {
         std::cerr << exc << std::endl;
         return 1;
     }
+
+    thScan.join();
+//    thSub.join();
 
     on_finished:
     RPlidarDriver::DisposeDriver(drv);
