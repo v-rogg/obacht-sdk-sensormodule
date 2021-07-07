@@ -126,9 +126,9 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
                 // TODO: Add base 92 converter
 
                 float angle = (nodes[pos].angle_z_q14 * 90.f / (1 << 14));
-                float distance = nodes[pos].dist_mm_q2;
+                float distance = nodes[pos].dist_mm_q2/4.0f;
 
-                if (distance > 0) stream << std::fixed << std::setprecision(4) << angle << ":" << std::setprecision(0) << distance << "!";
+                if (distance > 0) stream << std::fixed << std::setprecision(4) << angle << ":" << distance << "!";
             }
             s = stream.str();
             topic.publish(s);
