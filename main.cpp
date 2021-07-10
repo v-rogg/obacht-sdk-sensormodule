@@ -10,14 +10,14 @@
 #include <cstddef>
 //#include <ctime>
 #include <thread>
-#include <stdio.h>
+//#include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
+//#include <unistd.h>
+//#include <errno.h>
 #include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+//#include <sys/types.h>
+//#include <sys/socket.h>
+//#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <iomanip>
 
@@ -148,20 +148,6 @@ void scan(RPlidarDriver *drv, mqtt::topic topic, mqtt::topic connectionTopic) {
     drv->stop();
     drv->stopMotor();
     drv->disconnect();
-}
-
-void pingcheck(mqtt::async_client &client) {
-
-    mqtt::topic topic(client, "pingcheck", QOS);
-
-    while (true) {
-        auto msg = client.consume_message();
-        if (!msg) break;
-        if (msg->get_topic() != "test") {
-            std::cout << msg->get_topic() << ": " << msg->to_string() << std::endl;
-            topic.publish("@scan:2006-01-02T15:04:05Z07:00");
-        }
-    }
 }
 
 int main() {
